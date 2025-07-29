@@ -161,21 +161,53 @@ def load_and_split_data(file_path):
         # Konversi semua kolom embedding ke tipe numerik, paksa NaN jika konversi gagal
         for col in embedding_cols:
             df_data[col] = pd.to_numeric(df_data[col], errors='coerce')
+        
+        st.info(f"Jumlah baris sebelum penghapusan NaN: {len(df_data)}")
 
         # Hapus baris yang mengandung NaN di kolom embedding atau label
         # Ini penting agar SMOTE tidak error.
         initial_rows = len(df_data)
+        
+        # Cek kolom mana yang memiliki NaN sebelum dropna
+        nan_in_embeddings = df_data[embedding_cols].isnull().any(axis=1).sum()
+        nan_in_label = df_data['label'].isnull().sum()
+        
+        if nan_in_embeddings > 0 or nan_in_label > 0:
+            st.warning(f"Ditemukan {nan_in_embeddings} baris dengan NaN di kolom embedding, dan {nan_in_label} baris dengan NaN di kolom 'label'.")
+
         df_data.dropna(subset=embedding_cols + ['label'], inplace=True)
         rows_after_na_drop = len(df_data)
         if initial_rows != rows_after_na_drop:
-            st.warning(f"Ditemukan dan dihapus {initial_rows - rows_after_na_drop} baris karena mengandung nilai yang hilang (NaN) di kolom embedding atau label.")
+            st.warning(f"Dihapus {initial_rows - rows_after_na_drop} baris karena mengandung nilai yang hilang (NaN) di kolom embedding atau label.")
+        
+        st.info(f"Jumlah baris setelah penghapusan NaN: {len(df_data)}")
+        
+        if len(df_data) == 0:
+            st.error("Setelah membersihkan data, tidak ada baris yang tersisa. Pastikan file CSV Anda memiliki data yang valid.")
+            st.stop()
         # --- AKHIR PERBAIKAN PENTING ---
 
 
         # X untuk model (numpy array embeddings)
-        X_embeddings = df_data[embedding_cols].values
+        # Pastikan X_embeddings adalah numerik dan 2D
+        X_embeddings = df_data[embedding_cols].values.astype(np.float64) # Paksa tipe data float64
         # y untuk model (numpy array labels)
-        y_labels = df_data['label'].values
+        y_labels = df_data['label'].values.astype(int) # Paksa tipe data integer
+
+        # Verifikasi data sebelum split
+        if np.isnan(X_embeddings).any():
+            st.error("Error: Masih ada nilai NaN di X_embeddings setelah pembersihan. Periksa data asli Anda.")
+            st.stop()
+        if X_embeddings.ndim != 2:
+            st.error(f"Error: X_embeddings harus 2D, tapi dimensinya adalah {X_embeddings.ndim}. Bentuk: {X_embeddings.shape}")
+            st.stop()
+        if y_labels.ndim != 1:
+            st.error(f"Error: y_labels harus 1D, tapi dimensinya adalah {y_labels.ndim}. Bentuk: {y_labels.shape}")
+            st.stop()
+        
+        st.info(f"Bentuk X_embeddings setelah pembersihan: {X_embeddings.shape}")
+        st.info(f"Bentuk y_labels setelah pembersihan: {y_labels.shape}")
+
 
         test_size = 0.2
         random_seed = 42
@@ -184,6 +216,10 @@ def load_and_split_data(file_path):
         X_train, X_test, y_train, y_test = train_test_split(
             X_embeddings, y_labels, test_size=test_size, random_state=random_seed, stratify=y_labels
         )
+        
+        st.info(f"Bentuk X_train setelah split: {X_train.shape}")
+        st.info(f"Bentuk y_train setelah split: {y_train.shape}")
+
 
         # --- TAMBAHAN PENTING: Lakukan split terpisah untuk data DISPLAY (DataFrame lengkap) ---
         # Kita perlu membagi indeks asli df_data untuk mendapatkan DataFrame lengkap
@@ -201,6 +237,7 @@ def load_and_split_data(file_path):
 
     except Exception as e:
         st.error(f"Terjadi kesalahan saat memuat atau membagi data: {e}")
+        st.exception(e) # Menampilkan traceback penuh untuk debugging lebih lanjut
         st.stop()
 
 # Sidebar untuk Konfigurasi Dataset
@@ -214,14 +251,37 @@ df_data, X_train, X_test, y_train, y_test, embedding_cols, y_labels_original, df
 # --- PENYEIMBANGAN DATA DENGAN SMOTE (Diproses setelah load_and_split_data) ---
 @st.cache_data
 def apply_smote(X_train_data, y_train_data):
+    st.info(f"Menerapkan SMOTE pada data dengan bentuk X_train_data: {X_train_data.shape}, y_train_data: {y_train_data.shape}")
+    if np.isnan(X_train_data).any():
+        st.error("Error: NaN terdeteksi di X_train_data sebelum SMOTE. Ini seharusnya sudah ditangani sebelumnya.")
+        st.stop()
+    if not np.issubdtype(X_train_data.dtype, np.number):
+        st.error(f"Error: X_train_data bukan tipe numerik. Tipe: {X_train_data.dtype}")
+        st.stop()
+    if X_train_data.ndim != 2:
+        st.error(f"Error: X_train_data harus 2D untuk SMOTE. Dimensi: {X_train_data.ndim}")
+        st.stop()
+    if y_train_data.ndim != 1:
+        st.error(f"Error: y_train_data harus 1D untuk SMOTE. Dimensi: {y_train_data.ndim}")
+        st.stop()
+    
+    # Periksa jumlah kelas di y_train_data
+    unique_labels, counts = np.unique(y_train_data, return_counts=True)
+    st.info(f"Distribusi label di y_train_data sebelum SMOTE: {dict(zip(unique_labels, counts))}")
+    if len(unique_labels) < 2:
+        st.error("SMOTE membutuhkan setidaknya 2 kelas dalam data latih untuk oversampling.")
+        st.stop()
+
     smote = SMOTE(random_state=42)
     X_train_smoted, y_train_smoted = smote.fit_resample(X_train_data, y_train_data)
+    st.info(f"Bentuk data setelah SMOTE: X_train_smoted: {X_train_smoted.shape}, y_train_smoted: {y_train_smoted.shape}")
     return X_train_smoted, y_train_smoted
 
 X_train_smote, y_train_smote = apply_smote(X_train, y_train)
 # --- AKHIR PENYEIMBANGAN DATA DENGAN SMOTE ---
 
 
+# ... (sisa kode Anda dari sini tetap sama persis) ...
 # --- START: INI BLOK KODE HASIL TUNING DARI COLAB YANG BENAR ---
 # Pastikan X_train_smote dan y_train_smote sudah terdefinisi di sini untuk melatih model
 
