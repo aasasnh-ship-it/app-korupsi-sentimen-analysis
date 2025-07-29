@@ -148,15 +148,12 @@ def load_and_split_data(file_path):
         for col in embedding_cols:
             df_data[col] = pd.to_numeric(df_data[col], errors='coerce')
         
-        # st.info(f"Jumlah baris awal: {len(df_data)}") # Dihapus
-
         nan_in_embeddings_before = df_data[embedding_cols].isnull().any(axis=1).sum()
         inf_in_embeddings_before = np.isinf(df_data[embedding_cols].values).any().sum()
         nan_in_label_before = df_data['label'].isnull().sum()
         
         if nan_in_embeddings_before > 0 or inf_in_embeddings_before > 0 or nan_in_label_before > 0:
-            # st.warning(f"Sebelum dropna: Ditemukan {nan_in_embeddings_before} baris dengan NaN di embedding, {inf_in_embeddings_before} baris dengan Inf di embedding, dan {nan_in_label_before} baris dengan NaN di 'label'.") # Dihapus
-            pass
+            pass # Pesan warning dihilangkan, hanya lewatkan jika ada NaN/Inf
 
         df_data.replace([np.inf, -np.inf], np.nan, inplace=True)
         
@@ -165,10 +162,7 @@ def load_and_split_data(file_path):
         rows_after_na_drop = len(df_data)
         
         if initial_rows != rows_after_na_drop:
-            # st.warning(f"Dihapus {initial_rows - rows_after_na_drop} baris karena mengandung nilai yang hilang (NaN/Inf) di kolom embedding atau label.") # Dihapus
-            pass
-        
-        # st.info(f"Jumlah baris setelah penghapusan NaN/Inf: {len(df_data)}") # Dihapus
+            pass # Pesan warning dihilangkan, hanya lewatkan jika baris dihapus
         
         if len(df_data) == 0:
             st.error("Setelah membersihkan data, tidak ada baris yang tersisa. Pastikan file CSV Anda memiliki data yang valid dan cukup.")
@@ -190,9 +184,6 @@ def load_and_split_data(file_path):
             st.error(f"FINAL CHECK: y_labels harus 1D, tapi dimensinya adalah {y_labels.ndim}. Bentuk: {y_labels.shape}")
             st.stop()
         
-        # st.info(f"Bentuk X_embeddings final: {X_embeddings.shape}") # Dihapus
-        # st.info(f"Bentuk y_labels final: {y_labels.shape}") # Dihapus
-
         test_size = 0.2
         random_seed = 42
 
@@ -200,9 +191,6 @@ def load_and_split_data(file_path):
             X_embeddings, y_labels, test_size=test_size, random_state=random_seed, stratify=y_labels
         )
         
-        # st.info(f"Bentuk X_train setelah split: {X_train.shape}") # Dihapus
-        # st.info(f"Bentuk y_train setelah split: {y_train.shape}") # Dihapus
-
         train_idx, test_idx, _, _ = train_test_split(
             df_data.index, df_data['label'], test_size=test_size, random_state=random_seed, stratify=df_data['label']
         )
@@ -228,8 +216,6 @@ df_data, X_train, X_test, y_train, y_test, embedding_cols, y_labels_original, df
 # --- PENYEIMBANGAN DATA DENGAN SMOTE (Diproses setelah load_and_split_data) ---
 @st.cache_data
 def apply_smote(X_train_data, y_train_data):
-    # st.info(f"START SMOTE: Menerapkan SMOTE pada data dengan bentuk X_train_data: {X_train_data.shape}, y_train_data: {y_train_data.shape}") # Dihapus
-    
     if np.isnan(X_train_data).any():
         st.error("SMOTE PRE-CHECK: NaN terdeteksi di X_train_data tepat sebelum SMOTE.")
         st.stop()
@@ -247,7 +233,6 @@ def apply_smote(X_train_data, y_train_data):
         st.stop()
     
     unique_labels, counts = np.unique(y_train_data, return_counts=True)
-    # st.info(f"Distribusi label di y_train_data sebelum SMOTE: {dict(zip(unique_labels, counts))}") # Dihapus
     if len(unique_labels) < 2:
         st.error("SMOTE membutuhkan setidaknya 2 kelas dalam data latih untuk oversampling. Hentikan aplikasi.")
         st.stop()
@@ -262,7 +247,6 @@ def apply_smote(X_train_data, y_train_data):
     try:
         smote = SMOTE(random_state=42)
         X_train_smoted, y_train_smoted = smote.fit_resample(X_train_data, y_train_data)
-        # st.info(f"END SMOTE: Bentuk data setelah SMOTE: X_train_smoted: {X_train_smoted.shape}, y_train_smoted: {y_train_smoted.shape}") # Dihapus
         return X_train_smoted, y_train_smoted
     except Exception as e:
         st.error(f"Terjadi kesalahan saat menerapkan SMOTE: {e}")
