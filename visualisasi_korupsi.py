@@ -33,8 +33,6 @@ except Exception: # UBAH KE INI: Tangkap pengecualian umum
     nltk.download('punkt')
 
 
-# ... tambahkan untuk data NLTK lain yang Anda gunakan
-
 # Atur konfigurasi halaman Streamlit
 st.set_page_config(layout="wide", page_title="Dashboard Analisis Sentimen")
 
@@ -56,10 +54,14 @@ def generate_sentiment_wordclouds(df, text_column='teks', sentiment_column='labe
                                                                             " ".join(map(str, x)) if isinstance(x, (list, np.ndarray)) else
                                                                             (str(x) if not pd.isna(x) else "")
                                                                             )
+    
+    # Tambahkan penanganan jika ada NaN di kolom sentiment_column sebelum mapping
+    df_sentiment = df_sentiment.dropna(subset=[sentiment_column])
 
     # Pastikan label sentimen di mapping ke string 'Positif'/'Negatif'
     label_mapping = {0: 'Negatif', 1: 'Positif'} # Sesuaikan ini jika label Anda berbeda
     df_sentiment[sentiment_column] = df_sentiment[sentiment_column].map(label_mapping)
+
 
     # Gabungkan semua teks positif dan negatif
     positive_texts = " ".join(df_sentiment[df_sentiment[sentiment_column] == 'Positif']['processed_text_for_wc'].tolist())
@@ -143,7 +145,6 @@ def load_and_split_data(file_path):
             df_data = df_data.dropna(subset=['year'])
             df_data['year'] = df_data['year'].astype(int) # Pastikan tahun adalah integer
         else:
-            # st.warning("Kolom 'tanggal' tidak ditemukan.") # Hapus peringatan ini karena year di tab baru diisi manual
             df_data['year'] = 2024 # Dummy year jika kolom 'tanggal' tidak ada
         # --- AKHIR TAMBAHAN BARU ---
 
@@ -156,8 +157,22 @@ def load_and_split_data(file_path):
             st.error("Error: Kolom 'label' tidak ditemukan. Pastikan file input memiliki kolom label sentimen.")
             st.stop()
 
+        # --- PERBAIKAN PENTING: Penanganan NaN dan konversi tipe data untuk kolom embedding ---
+        # Konversi semua kolom embedding ke tipe numerik, paksa NaN jika konversi gagal
+        for col in embedding_cols:
+            df_data[col] = pd.to_numeric(df_data[col], errors='coerce')
+
+        # Hapus baris yang mengandung NaN di kolom embedding atau label
+        # Ini penting agar SMOTE tidak error.
+        initial_rows = len(df_data)
+        df_data.dropna(subset=embedding_cols + ['label'], inplace=True)
+        rows_after_na_drop = len(df_data)
+        if initial_rows != rows_after_na_drop:
+            st.warning(f"Ditemukan dan dihapus {initial_rows - rows_after_na_drop} baris karena mengandung nilai yang hilang (NaN) di kolom embedding atau label.")
+        # --- AKHIR PERBAIKAN PENTING ---
+
+
         # X untuk model (numpy array embeddings)
-        # Pastikan kolom embedding adalah numerik
         X_embeddings = df_data[embedding_cols].values
         # y untuk model (numpy array labels)
         y_labels = df_data['label'].values
@@ -337,14 +352,14 @@ with tab1:
         # Ubah subheader ini agar tidak sama dengan di bawahnya
         st.subheader("Diagram Pie Distribusi Label Keseluruhan") 
         fig_plotly_pie = px.pie(label_counts_df,
-                                names='Label',
-                                values='Jumlah Data',
-                                title='PIE CHART Distribusi Label Keseluruhan', # Ubah judul pie chart
-                                color_discrete_sequence=sns.color_palette('viridis', n_colors=len(label_counts_df)).as_hex(),
-                                hole=0.3,
-                                height=450,
-                                width=450
-                                )
+                                 names='Label',
+                                 values='Jumlah Data',
+                                 title='PIE CHART Distribusi Label Keseluruhan', # Ubah judul pie chart
+                                 color_discrete_sequence=sns.color_palette('viridis', n_colors=len(label_counts_df)).as_hex(),
+                                 hole=0.3,
+                                 height=450,
+                                 width=450
+                                 )
         fig_plotly_pie.update_traces(textinfo='percent', textfont_color='white', marker=dict(line=dict(color='#000000', width=1)))
         fig_plotly_pie.update_layout(
             paper_bgcolor='rgba(0,0,0,0)',
@@ -419,10 +434,10 @@ with tab1:
         })
         
         fig_before_smote = px.bar(train_label_before_df, x='Label', y='Jumlah Data', 
-                                  title='Sebelum SMOTE',
-                                  color='Label',
-                                  color_discrete_map={'Negatif': 'coral', 'Positif': 'skyblue'},
-                                  template="plotly_dark", height=400)
+                                 title='Sebelum SMOTE',
+                                 color='Label',
+                                 color_discrete_map={'Negatif': 'coral', 'Positif': 'skyblue'},
+                                 template="plotly_dark", height=400)
         fig_before_smote.update_layout(font_color="white", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         fig_before_smote.update_traces(texttemplate='%{y}', textposition='outside')
         st.plotly_chart(fig_before_smote, use_container_width=True)
@@ -476,13 +491,11 @@ with tab_sentimen_tahun:
     st.header("Distribusi Data Sentimen per Tahun")
 
     # Data manual yang Anda berikan untuk sentimen per tahun
-    # >>> PERUBAHAN DI SINI <<<
     sentiment_data_per_year = {
         'year': [2023, 2024, 2025],
         'Negatif': [178, 2823, 1550],
         'Positif': [3, 38, 17]
     }
-    # >>> AKHIR PERUBAHAN <<<
     df_sentiment_per_year = pd.DataFrame(sentiment_data_per_year)
 
     # Pastikan kolom 'year' sebagai string untuk Plotly agar diperlakukan sebagai kategori diskrit
@@ -748,9 +761,9 @@ with tab3:
         # Menampilkan nilai di atas bar
         for p in ax_gnb_metrics.patches:
             ax_gnb_metrics.annotate(f'{p.get_height():.3f}', 
-                                    (p.get_x() + p.get_width() / 2., p.get_height()), 
-                                    ha='center', va='center', xytext=(0, 5), # Sesuaikan xytext
-                                    textcoords='offset points', color='white', fontsize=8) # Ukuran font lebih kecil
+                                     (p.get_x() + p.get_width() / 2., p.get_height()), 
+                                     ha='center', va='center', xytext=(0, 5), # Sesuaikan xytext
+                                     textcoords='offset points', color='white', fontsize=8) # Ukuran font lebih kecil
 
         # Menyesuaikan legenda
         legend = ax_gnb_metrics.legend(title='', loc='upper right', frameon=True, fontsize=8)
@@ -827,9 +840,9 @@ with tab3:
         # Menampilkan nilai di atas bar
         for p in ax_svm_metrics.patches:
             ax_svm_metrics.annotate(f'{p.get_height():.3f}', 
-                                    (p.get_x() + p.get_width() / 2., p.get_height()), 
-                                    ha='center', va='center', xytext=(0, 5), 
-                                    textcoords='offset points', color='white', fontsize=8)
+                                     (p.get_x() + p.get_width() / 2., p.get_height()), 
+                                     ha='center', va='center', xytext=(0, 5), 
+                                     textcoords='offset points', color='white', fontsize=8)
 
         # Menyesuaikan legenda
         legend = ax_svm_metrics.legend(title='', loc='upper right', frameon=True, fontsize=8)
@@ -905,7 +918,6 @@ with tab4:
 
     # --- Kolom Kiri: Evaluasi Naive Bayes Classifier ---
     with col_gnb_eval:
-        # --- PERBAIKAN: Gunakan akurasi yang dihitung langsung untuk display header ---
         st.markdown(f"<h4 style='text-align: left; color: white;'>Naive Bayes Classifier</h4>", unsafe_allow_html=True)
         st.markdown(f"<span style='font-size: 0.9em; color: limegreen;'>Akurasi: `{accuracy_gnb_test_tab4:.4f}`</span>", unsafe_allow_html=True) # Perbaikan di sini
         st.markdown(f"Konfigurasi: `{st.session_state['best_params_gnb']}`") # Tampilkan parameter terbaik
@@ -921,8 +933,6 @@ with tab4:
         # Hapus baris 'accuracy' dari tabel karena akan ditampilkan terpisah
         df_report_nb_display = df_report_nb[~df_report_nb['Class/Metric'].isin(['accuracy', 'macro avg', 'weighted avg'])]
         st.dataframe(df_report_nb_display.style.format("{:.2f}", subset=['precision', 'recall', 'f1-score', 'support']), use_container_width=True)
-        
-        # st.write(f"**Akurasi (Naive Bayes Classifier): `{accuracy_score(y_test, y_pred_nb):.4f}`**") # Baris ini sekarang berlebihan jika sudah di atas
         
         st.write("##### Matriks Konfusi") # Subheader lebih kecil
         cm_nb = confusion_matrix(y_test, y_pred_nb)
@@ -941,7 +951,6 @@ with tab4:
 
     # --- Kolom Kanan: Evaluasi Support Vector Machine (SVM) ---
     with col_svm_eval:
-        # --- PERBAIKAN: Gunakan akurasi yang dihitung langsung untuk display header ---
         st.markdown(f"<h4 style='text-align: left; color: white;'>Support Vector Machine (SVM)</h4>", unsafe_allow_html=True)
         st.markdown(f"<span style='font-size: 0.9em; color: limegreen;'>Akurasi: `{accuracy_svm_test_tab4:.4f}`</span>", unsafe_allow_html=True) # Perbaikan di sini
         st.markdown(f"Konfigurasi: `{st.session_state['best_params_svm']}`") # Tampilkan parameter terbaik
@@ -957,8 +966,6 @@ with tab4:
         # Hapus baris 'accuracy' dari tabel karena akan ditampilkan terpisah
         df_report_svm_display = df_report_svm[~df_report_svm['Class/Metric'].isin(['accuracy', 'macro avg', 'weighted avg'])]
         st.dataframe(df_report_svm_display.style.format("{:.2f}", subset=['precision', 'recall', 'f1-score', 'support']), use_container_width=True)
-        
-        # st.write(f"**Akurasi (SVM): `{accuracy_score(y_test, y_pred_svm):.4f}`**") # Baris ini sekarang berlebihan jika sudah di atas
         
         st.write("##### Matriks Konfusi") # Subheader lebih kecil
         cm_svm = confusion_matrix(y_test, y_pred_svm)
