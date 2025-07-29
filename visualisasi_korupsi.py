@@ -153,7 +153,7 @@ def load_and_split_data(file_path):
         nan_in_label_before = df_data['label'].isnull().sum()
         
         if nan_in_embeddings_before > 0 or inf_in_embeddings_before > 0 or nan_in_label_before > 0:
-            pass # Pesan warning dihilangkan, hanya lewatkan jika ada NaN/Inf
+            pass
 
         df_data.replace([np.inf, -np.inf], np.nan, inplace=True)
         
@@ -162,7 +162,7 @@ def load_and_split_data(file_path):
         rows_after_na_drop = len(df_data)
         
         if initial_rows != rows_after_na_drop:
-            pass # Pesan warning dihilangkan, hanya lewatkan jika baris dihapus
+            pass
         
         if len(df_data) == 0:
             st.error("Setelah membersihkan data, tidak ada baris yang tersisa. Pastikan file CSV Anda memiliki data yang valid dan cukup.")
