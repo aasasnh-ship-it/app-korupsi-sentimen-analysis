@@ -8,28 +8,28 @@ from sklearn.metrics import classification_report, confusion_matrix, accuracy_sc
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
-import plotly.express as px # Import plotly.express
+import plotly.express as px
 import ast
 import nltk
 from nltk.corpus import stopwords
 from wordcloud import WordCloud
 import re
-from collections import Counter # Untuk menghitung kata populer
-import io # Untuk download button
+from collections import Counter
+import io
 
 # Import SMOTE dari imblearn
-from imblearn.over_sampling import SMOTE # Pastikan imbalanced-learn sudah terinstal
+from imblearn.over_sampling import SMOTE
 
 
 # Coba unduh data NLTK yang dibutuhkan
 try:
     nltk.data.find('corpora/stopwords')
-except Exception: # UBAH KE INI: Tangkap pengecualian umum
+except Exception:
     nltk.download('stopwords')
 
 try:
     nltk.data.find('tokenizers/punkt')
-except Exception: # UBAH KE INI: Tangkap pengecualian umum
+except Exception:
     nltk.download('punkt')
 
 
@@ -45,25 +45,20 @@ def generate_sentiment_wordclouds(df, text_column='teks', sentiment_column='labe
     """
     if text_column not in df.columns or sentiment_column not in df.columns:
         st.error(f"Kolom '{text_column}' atau '{sentiment_column}' tidak ditemukan di DataFrame untuk WordCloud Sentimen.")
-        return {}, "", "" # Mengembalikan dictionary dan string kosong
+        return {}, "", ""
 
     df_sentiment = df.copy()
 
-    # Pastikan kolom 'teks' adalah string, konversi list ke string jika perlu
     df_sentiment['processed_text_for_wc'] = df_sentiment[text_column].apply(lambda x:
                                                                             " ".join(map(str, x)) if isinstance(x, (list, np.ndarray)) else
                                                                             (str(x) if not pd.isna(x) else "")
                                                                             )
     
-    # Tambahkan penanganan jika ada NaN di kolom sentiment_column sebelum mapping
     df_sentiment = df_sentiment.dropna(subset=[sentiment_column])
 
-    # Pastikan label sentimen di mapping ke string 'Positif'/'Negatif'
-    label_mapping = {0: 'Negatif', 1: 'Positif'} # Sesuaikan ini jika label Anda berbeda
+    label_mapping = {0: 'Negatif', 1: 'Positif'}
     df_sentiment[sentiment_column] = df_sentiment[sentiment_column].map(label_mapping)
 
-
-    # Gabungkan semua teks positif dan negatif
     positive_texts = " ".join(df_sentiment[df_sentiment[sentiment_column] == 'Positif']['processed_text_for_wc'].tolist())
     negative_texts = " ".join(df_sentiment[df_sentiment[sentiment_column] == 'Negatif']['processed_text_for_wc'].tolist())
 
@@ -79,7 +74,7 @@ def generate_sentiment_wordclouds(df, text_column='teks', sentiment_column='labe
         ).generate(positive_texts)
         wordclouds['Positif'] = wordcloud_positif
     else:
-        pass # Disabling info to avoid clutter on startup
+        pass
 
     if negative_texts:
         wordcloud_negatif = WordCloud(
@@ -91,7 +86,7 @@ def generate_sentiment_wordclouds(df, text_column='teks', sentiment_column='labe
         ).generate(negative_texts)
         wordclouds['Negatif'] = wordcloud_negatif
     else:
-        pass # Disabling info to avoid clutter on startup
+        pass
 
     return wordclouds, positive_texts, negative_texts
 
@@ -110,43 +105,36 @@ def load_and_split_data(file_path):
     try:
         df_data = pd.read_csv(file_path)
 
-        # --- PENTING: Perbaikan di sini untuk kolom 'teks' ---
         if 'teks' in df_data.columns:
-            # Fungsi pembantu untuk mengonversi string representasi list, menangani NaN, dll.
             def process_text_entry_for_load(x):
                 if pd.isna(x):
-                    return [] # Jika NaN, kembalikan list kosong
+                    return []
                 if isinstance(x, str):
                     x_stripped = x.strip()
                     if x_stripped.startswith('[') and x_stripped.endswith(']'):
                         try:
-                            # Coba literal_eval hanya jika formatnya seperti list
                             evaluated = ast.literal_eval(x_stripped)
                             if isinstance(evaluated, (list, np.ndarray)):
-                                return list(evaluated) # Pastikan list Python
-                            return [str(evaluated)] # Bungkus jika hasil evaluasi bukan list/array
+                                return list(evaluated)
+                            return [str(evaluated)]
                         except (ValueError, SyntaxError):
-                            pass # Lanjut ke penanganan string biasa jika gagal evaluasi
-                    # Jika string bukan format list, atau gagal dievaluasi
+                            pass
                     return [x]
                 if isinstance(x, np.ndarray):
-                    return x.tolist() # Konversi array NumPy ke list Python
+                    return x.tolist()
                 if isinstance(x, list):
-                    return x # Jika sudah list, biarkan
-                return [str(x)] # Bungkus tipe data lain ke dalam list string
+                    return x
+                return [str(x)]
 
             df_data['teks'] = df_data['teks'].apply(process_text_entry_for_load)
-        # --- AKHIR PERBAIKAN PENTING ---
 
-        # --- TAMBAHAN BARU: Tambahkan kolom 'year' jika kolom 'tanggal' ada (ini untuk internal df_data, tidak dipakai di tab_sentimen_tahun lagi) ---
         if 'tanggal' in df_data.columns:
             df_data['tanggal_dt'] = pd.to_datetime(df_data['tanggal'], errors='coerce')
             df_data['year'] = df_data['tanggal_dt'].dt.year
             df_data = df_data.dropna(subset=['year'])
-            df_data['year'] = df_data['year'].astype(int) # Pastikan tahun adalah integer
+            df_data['year'] = df_data['year'].astype(int)
         else:
-            df_data['year'] = 2024 # Dummy year jika kolom 'tanggal' tidak ada
-        # --- AKHIR TAMBAHAN BARU ---
+            df_data['year'] = 2024
 
         embedding_cols = [col for col in df_data.columns if col.startswith('embedding_')]
         if not embedding_cols:
@@ -157,51 +145,42 @@ def load_and_split_data(file_path):
             st.error("Error: Kolom 'label' tidak ditemukan. Pastikan file input memiliki kolom label sentimen.")
             st.stop()
 
-        # --- PERBAIKAN PENTING: Penanganan NaN dan konversi tipe data untuk kolom embedding ---
-        # Konversi semua kolom embedding ke tipe numerik, paksa NaN jika konversi gagal
         for col in embedding_cols:
             df_data[col] = pd.to_numeric(df_data[col], errors='coerce')
         
-        st.info(f"Jumlah baris awal: {len(df_data)}")
+        # st.info(f"Jumlah baris awal: {len(df_data)}") # Dihapus
 
-        # Cek dan laporkan NaN/inf sebelum dropna
         nan_in_embeddings_before = df_data[embedding_cols].isnull().any(axis=1).sum()
-        inf_in_embeddings_before = np.isinf(df_data[embedding_cols].values).any().sum() # Periksa inf
+        inf_in_embeddings_before = np.isinf(df_data[embedding_cols].values).any().sum()
         nan_in_label_before = df_data['label'].isnull().sum()
         
         if nan_in_embeddings_before > 0 or inf_in_embeddings_before > 0 or nan_in_label_before > 0:
-            st.warning(f"Sebelum dropna: Ditemukan {nan_in_embeddings_before} baris dengan NaN di embedding, {inf_in_embeddings_before} baris dengan Inf di embedding, dan {nan_in_label_before} baris dengan NaN di 'label'.")
+            # st.warning(f"Sebelum dropna: Ditemukan {nan_in_embeddings_before} baris dengan NaN di embedding, {inf_in_embeddings_before} baris dengan Inf di embedding, dan {nan_in_label_before} baris dengan NaN di 'label'.") # Dihapus
+            pass
 
-        # Hapus baris yang mengandung NaN atau Inf di kolom embedding atau NaN di label
-        # Menggunakan .replace([np.inf, -np.inf], np.nan) untuk mengubah Inf menjadi NaN agar dropna bisa menangani
-        df_data.replace([np.inf, -np.inf], np.nan, inplace=True) # Tambahkan ini
+        df_data.replace([np.inf, -np.inf], np.nan, inplace=True)
         
         initial_rows = len(df_data)
         df_data.dropna(subset=embedding_cols + ['label'], inplace=True)
         rows_after_na_drop = len(df_data)
         
         if initial_rows != rows_after_na_drop:
-            st.warning(f"Dihapus {initial_rows - rows_after_na_drop} baris karena mengandung nilai yang hilang (NaN/Inf) di kolom embedding atau label.")
+            # st.warning(f"Dihapus {initial_rows - rows_after_na_drop} baris karena mengandung nilai yang hilang (NaN/Inf) di kolom embedding atau label.") # Dihapus
+            pass
         
-        st.info(f"Jumlah baris setelah penghapusan NaN/Inf: {len(df_data)}")
+        # st.info(f"Jumlah baris setelah penghapusan NaN/Inf: {len(df_data)}") # Dihapus
         
         if len(df_data) == 0:
             st.error("Setelah membersihkan data, tidak ada baris yang tersisa. Pastikan file CSV Anda memiliki data yang valid dan cukup.")
             st.stop()
-        # --- AKHIR PERBAIKAN PENTING ---
 
+        X_embeddings = df_data[embedding_cols].values.astype(np.float64)
+        y_labels = df_data['label'].values.astype(int)
 
-        # X untuk model (numpy array embeddings)
-        # Pastikan X_embeddings adalah numerik dan 2D
-        X_embeddings = df_data[embedding_cols].values.astype(np.float64) # Paksa tipe data float64
-        # y untuk model (numpy array labels)
-        y_labels = df_data['label'].values.astype(int) # Paksa tipe data integer
-
-        # Verifikasi data sebelum split
         if np.isnan(X_embeddings).any():
             st.error("FINAL CHECK: Masih ada nilai NaN di X_embeddings setelah semua pembersihan. Ini masalah serius!")
             st.stop()
-        if np.isinf(X_embeddings).any(): # Pengecekan inf lagi
+        if np.isinf(X_embeddings).any():
             st.error("FINAL CHECK: Masih ada nilai Inf di X_embeddings setelah semua pembersihan. Ini masalah serius!")
             st.stop()
         if X_embeddings.ndim != 2:
@@ -211,44 +190,36 @@ def load_and_split_data(file_path):
             st.error(f"FINAL CHECK: y_labels harus 1D, tapi dimensinya adalah {y_labels.ndim}. Bentuk: {y_labels.shape}")
             st.stop()
         
-        st.info(f"Bentuk X_embeddings final: {X_embeddings.shape}")
-        st.info(f"Bentuk y_labels final: {y_labels.shape}")
-
+        # st.info(f"Bentuk X_embeddings final: {X_embeddings.shape}") # Dihapus
+        # st.info(f"Bentuk y_labels final: {y_labels.shape}") # Dihapus
 
         test_size = 0.2
         random_seed = 42
 
-        # Lakukan split untuk data MODEL (X_embeddings, y_labels)
         X_train, X_test, y_train, y_test = train_test_split(
             X_embeddings, y_labels, test_size=test_size, random_state=random_seed, stratify=y_labels
         )
         
-        st.info(f"Bentuk X_train setelah split: {X_train.shape}")
-        st.info(f"Bentuk y_train setelah split: {y_train.shape}")
+        # st.info(f"Bentuk X_train setelah split: {X_train.shape}") # Dihapus
+        # st.info(f"Bentuk y_train setelah split: {y_train.shape}") # Dihapus
 
-
-        # --- TAMBAHAN PENTING: Lakukan split terpisah untuk data DISPLAY (DataFrame lengkap) ---
-        # Kita perlu membagi indeks asli df_data untuk mendapatkan DataFrame lengkap
         train_idx, test_idx, _, _ = train_test_split(
             df_data.index, df_data['label'], test_size=test_size, random_state=random_seed, stratify=df_data['label']
         )
         
         df_train_display = df_data.loc[train_idx]
         df_test_display = df_data.loc[test_idx]
-        # --- AKHIR TAMBAHAN ---
 
-        # --- TAMBAHAN PENTING: Perbarui nilai kembalian fungsi ---
         return df_data, X_train, X_test, y_train, y_test, embedding_cols, y_labels, df_train_display, df_test_display
-        # --- AKHIR TAMBAHAN ---
 
     except Exception as e:
         st.error(f"Terjadi kesalahan SAAT PEMUATAN atau PEMBAGIAN data: {e}")
-        st.exception(e) # Menampilkan traceback penuh untuk debugging lebih lanjut
+        st.exception(e)
         st.stop()
 
 # Sidebar untuk Konfigurasi Dataset
 st.sidebar.header("Konfigurasi Dataset")
-default_file_path = "korupsi_labeled_and_embedded.csv" # Diubah ke korupsi_labeled_and_embedded.csv
+default_file_path = "korupsi_labeled_and_embedded.csv"
 input_combined_file = st.sidebar.text_input("Path File Data CSV", value=default_file_path)
 
 # Muat data sekali dan simpan dalam cache
@@ -257,14 +228,10 @@ df_data, X_train, X_test, y_train, y_test, embedding_cols, y_labels_original, df
 # --- PENYEIMBANGAN DATA DENGAN SMOTE (Diproses setelah load_and_split_data) ---
 @st.cache_data
 def apply_smote(X_train_data, y_train_data):
-    st.info(f"START SMOTE: Menerapkan SMOTE pada data dengan bentuk X_train_data: {X_train_data.shape}, y_train_data: {y_train_data.shape}")
+    # st.info(f"START SMOTE: Menerapkan SMOTE pada data dengan bentuk X_train_data: {X_train_data.shape}, y_train_data: {y_train_data.shape}") # Dihapus
     
-    # Debugging tambahan untuk NaN/Inf tepat sebelum SMOTE
     if np.isnan(X_train_data).any():
         st.error("SMOTE PRE-CHECK: NaN terdeteksi di X_train_data tepat sebelum SMOTE.")
-        # Optional: Print indexes of rows with NaN for deep debugging
-        # nan_rows = np.where(np.isnan(X_train_data).any(axis=1))[0]
-        # st.error(f"Rows with NaN: {nan_rows[:5]} (showing first 5 if many)")
         st.stop()
     if np.isinf(X_train_data).any():
         st.error("SMOTE PRE-CHECK: Inf terdeteksi di X_train_data tepat sebelum SMOTE.")
@@ -279,66 +246,53 @@ def apply_smote(X_train_data, y_train_data):
         st.error(f"SMOTE PRE-CHECK: y_train_data harus 1D untuk SMOTE. Dimensi: {y_train_data.ndim}")
         st.stop()
     
-    # Periksa jumlah kelas di y_train_data
     unique_labels, counts = np.unique(y_train_data, return_counts=True)
-    st.info(f"Distribusi label di y_train_data sebelum SMOTE: {dict(zip(unique_labels, counts))}")
+    # st.info(f"Distribusi label di y_train_data sebelum SMOTE: {dict(zip(unique_labels, counts))}") # Dihapus
     if len(unique_labels) < 2:
         st.error("SMOTE membutuhkan setidaknya 2 kelas dalam data latih untuk oversampling. Hentikan aplikasi.")
         st.stop()
     
-    # Cek apakah ada cukup sampel untuk minoritas
-    min_samples_smote = 2 # Default SMOTE k_neighbors jika n_samples < 2
+    min_samples_smote = 2
     for label, count in zip(unique_labels, counts):
         if count < min_samples_smote:
             st.error(f"Kelas '{label}' hanya memiliki {count} sampel. SMOTE membutuhkan minimal {min_samples_smote} sampel untuk setiap kelas.")
             st.error("Tidak dapat menerapkan SMOTE karena kelas minoritas terlalu kecil. Hentikan aplikasi.")
             st.stop()
 
-
     try:
         smote = SMOTE(random_state=42)
         X_train_smoted, y_train_smoted = smote.fit_resample(X_train_data, y_train_data)
-        st.info(f"END SMOTE: Bentuk data setelah SMOTE: X_train_smoted: {X_train_smoted.shape}, y_train_smoted: {y_train_smoted.shape}")
+        # st.info(f"END SMOTE: Bentuk data setelah SMOTE: X_train_smoted: {X_train_smoted.shape}, y_train_smoted: {y_train_smoted.shape}") # Dihapus
         return X_train_smoted, y_train_smoted
     except Exception as e:
         st.error(f"Terjadi kesalahan saat menerapkan SMOTE: {e}")
-        st.exception(e) # Ini akan menampilkan traceback penuh dari SMOTE jika Streamlit tidak menyembunyikannya
+        st.exception(e)
         st.stop()
 
 X_train_smote, y_train_smote = apply_smote(X_train, y_train)
-# --- AKHIR PENYEIMBANGAN DATA DENGAN SMOTE ---
 
 
-# ... (sisa kode Anda dari sini tetap sama persis) ...
 # --- START: INI BLOK KODE HASIL TUNING DARI COLAB YANG BENAR ---
-# Pastikan X_train_smote dan y_train_smote sudah terdefinisi di sini untuk melatih model
-
-# Untuk Gaussian Naive Bayes
-gnb_best_params_from_colab = {'var_smoothing': np.float64(1.0)} # <<< SESUAIKAN DENGAN HASIL COLAB ANDA
-gnb_best_score_from_colab = 0.7434 # <<< SESUAIKAN DENGAN SKOR F1 DARI HASIL COLAB ANDA
+gnb_best_params_from_colab = {'var_smoothing': np.float64(1.0)}
+gnb_best_score_from_colab = 0.7434
 
 best_model_gnb_from_colab = GaussianNB(**gnb_best_params_from_colab)
-# Latih model ini dengan data train YANG SUDAH DI-SMOTE agar bisa digunakan di tab4
-best_model_gnb_from_colab.fit(X_train_smote, y_train_smote) # <<< MENGGUNAKAN DATA SMOTE
+best_model_gnb_from_colab.fit(X_train_smote, y_train_smote)
 
-
-# Untuk Support Vector Machine (SVM)
-svm_best_params_from_colab = {'C': 100, 'kernel': 'rbf'} # <<< SESUAIKAN DENGAN HASIL COLAB ANDA
-svm_best_score_from_colab = 0.8765 # <<< SESUAIKAN DENGAN SKOR F1 DARI HASIL COLAB ANDA
+svm_best_params_from_colab = {'C': 100, 'kernel': 'rbf'}
+svm_best_score_from_colab = 0.8765
 
 best_model_svm_from_colab = SVC(probability=True, **svm_best_params_from_colab)
-# Latih model ini dengan data train YANG SUDAH DI-SMOTE agar bisa digunakan di tab4
-best_model_svm_from_colab.fit(X_train_smote, y_train_smote) # <<< MENGGUNAKAN DATA SMOTE
+best_model_svm_from_colab.fit(X_train_smote, y_train_smote)
 
 
-# --- Simpan hasil langsung ke session_state saat startup ---
 if 'best_model_gnb' not in st.session_state:
     st.session_state['best_model_gnb'] = best_model_gnb_from_colab
     st.session_state['best_params_gnb'] = gnb_best_params_from_colab
     st.session_state['best_score_gnb'] = gnb_best_score_from_colab
 
 if 'best_model_svm' not in st.session_state:
-    st.session_state['best_model_svm'] = best_model_svm_from_colab # DULU SALAH: svm_best_params_from_colab
+    st.session_state['best_model_svm'] = best_model_svm_from_colab
     st.session_state['best_params_svm'] = svm_best_params_from_colab
     st.session_state['best_score_svm'] = svm_best_score_from_colab
 # --- END: INI BLOK KODE HASIL TUNING DARI COLAB ---
@@ -350,13 +304,13 @@ st.markdown(
     <style>
     /* Mengatur warna latar belakang halaman utama Streamlit */
     .stApp {
-        background-color: #0E1117; /* Warna latar belakang gelap untuk keseluruhan aplikasi */
+        background-color: #0E1117;
     }
 
     .main-title {
         font-size: 3em;
         text-align: center;
-        color: #FFFFFF; /* Warna teks putih */
+        color: #FFFFFF;
         background-color: transparent;
         padding: 20px;
         border-radius: 10px;
@@ -364,41 +318,38 @@ st.markdown(
         border: none;
     }
     .stTabs [data-baseweb="tab-list"] {
-        gap: 5px; /* Memberikan sedikit celah antar tab */
-        margin-top: 30px; /* BARIS BARU: MENAMBAHKAN JARAK DENGAN JUDUL DI ATAS */
+        gap: 5px;
+        margin-top: 30px;
     }
     .stTabs [data-baseweb="tab-list"] button {
-        background-color: #333333; /* Warna abu-abu gelap untuk tab tidak aktif */
-        color: white; /* White text */
+        background-color: #333333;
+        color: white;
         padding: 10px 20px;
-        border-radius: 5px; /* Ubah ke 5px untuk membuat sudut rata */
-        margin-right: 0px; /* Hapus margin-right di sini karena gap sudah diatur di parent */
+        border-radius: 5px;
+        margin-right: 0px;
         border: none;
         cursor: pointer;
         font-weight: bold;
     }
     .stTabs [data-baseweb="tab-list"] button:hover {
-        background-color: #555555; /* Warna hover sedikit lebih terang */
+        background-color: #555555;
     }
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        background-color: #1560BD; /* PERUBAHAN WARNA: MENGUBAH WARNA BIRU TAB AKTIF */
+        background-color: #1560BD;
         color: white;
     }
-    /* Menyesuaikan warna teks sidebar jika diperlukan */
-    .st-emotion-cache-1wv7k0o { /* Selector untuk teks di sidebar (ini bisa bervariasi tergantung versi Streamlit) */
-        color: #FFFFFF; /* Contoh: membuat teks sidebar putih */
+    .st-emotion-cache-1wv7k0o {
+        color: #FFFFFF;
     }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# --- PERBAIKAN JUDUL UTAMA DASHBOARD ---
 st.markdown(
     "<h1 class='main-title'>Klasifikasi Unggahan Terkait Isu Korupsi dan <br> Perbandingan Algoritma <span style='color:#1560BD;'>Naive Bayes Classifier dan Support Vector Machine (SVM)</span></h1>",
     unsafe_allow_html=True
 )
-# --- AKHIR PERBAIKAN JUDUL ---
 
 # Buat tab untuk berbagai bagian dashboard
 tab1, tab_sentimen_tahun, tab2, tab3, tab4 = st.tabs(["Distribusi Data", "Sentimen per Tahun", "Kata Populer & Wordcloud", "Performa Model", "Evaluasi Uji Rinci"])
@@ -410,7 +361,7 @@ with tab1:
     col_left_content, col_split_info = st.columns([1, 1])
 
     with col_left_content:
-        st.subheader("Jumlah Data Keseluruhan") # Ubah subheader agar lebih jelas
+        st.subheader("Jumlah Data Keseluruhan")
         label_counts_df = pd.Series(y_labels_original).value_counts().reset_index()
         label_counts_df.columns = ['Label', 'Jumlah Data']
         label_mapping = {0: 'Negatif', 1: 'Positif'}
@@ -437,12 +388,11 @@ with tab1:
         table_html += "</tbody></table>"
         st.markdown(table_html, unsafe_allow_html=True)
 
-        # Ubah subheader ini agar tidak sama dengan di bawahnya
         st.subheader("Diagram Pie Distribusi Label Keseluruhan") 
         fig_plotly_pie = px.pie(label_counts_df,
                                  names='Label',
                                  values='Jumlah Data',
-                                 title='PIE CHART Distribusi Label Keseluruhan', # Ubah judul pie chart
+                                 title='PIE CHART Distribusi Label Keseluruhan',
                                  color_discrete_sequence=sns.color_palette('viridis', n_colors=len(label_counts_df)).as_hex(),
                                  hole=0.3,
                                  height=450,
@@ -484,7 +434,7 @@ with tab1:
         split_table_html += "</tbody></table>"
         st.markdown(split_table_html, unsafe_allow_html=True)
         
-        st.subheader("Distribusi Label Data Uji") # Ubah subheader ini
+        st.subheader("Distribusi Label Data Uji")
         y_test_labels = pd.Series(y_test).map(label_mapping)
         fig_test_bar, ax_test_bar = plt.subplots(figsize=(6, 4))
         fig_test_bar.patch.set_facecolor('white')
@@ -506,8 +456,8 @@ with tab1:
 
     st.info("Data telah berhasil dimuat dan dibagi menjadi set pelatihan dan pengujian, memastikan pengambilan sampel bertingkat untuk distribusi kelas yang seimbang.")
 
-    # --- BAGIAN BARU: Visualisasi Penyeimbangan Data (SMOTE) ---
-    st.markdown("---") # Garis pemisah
+    # --- BAGIAN VISUALISASI PENYEIMBANGAN DATA DENGAN SMOTE ---
+    st.markdown("---")
     st.header("Visualisasi Penyeimbangan Data Menggunakan SMOTE")
     st.info("SMOTE (Synthetic Minority Over-sampling Technique) digunakan untuk mengatasi ketidakseimbangan kelas pada data latih dengan menghasilkan sampel baru untuk kelas minoritas.")
 
@@ -517,7 +467,7 @@ with tab1:
         st.subheader("Distribusi Label Data Latih Sebelum SMOTE")
         train_label_before_dist = pd.Series(y_train).value_counts().sort_index()
         train_label_before_df = pd.DataFrame({
-            'Label': train_label_before_dist.index.map(label_mapping), # Gunakan label_mapping
+            'Label': train_label_before_dist.index.map(label_mapping),
             'Jumlah Data': train_label_before_dist.values
         })
         
@@ -534,7 +484,7 @@ with tab1:
         st.subheader("Distribusi Label Data Latih Sesudah SMOTE")
         train_label_after_dist = pd.Series(y_train_smote).value_counts().sort_index()
         train_label_after_df = pd.DataFrame({
-            'Label': train_label_after_dist.index.map(label_mapping), # Gunakan label_mapping
+            'Label': train_label_after_dist.index.map(label_mapping),
             'Jumlah Data': train_label_after_dist.values
         })
 
@@ -546,7 +496,6 @@ with tab1:
         fig_after_smote.update_layout(font_color="white", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
         fig_after_smote.update_traces(texttemplate='%{y}', textposition='outside')
         st.plotly_chart(fig_after_smote, use_container_width=True)
-    # --- AKHIR BAGIAN BARU ---
 
     st.subheader("Sampel Data Hasil Pembagian")
     tab_train_sample, tab_test_sample = st.tabs(["Data Latih (Train)", "Data Uji (Test)"])
@@ -578,7 +527,6 @@ with tab1:
 with tab_sentimen_tahun:
     st.header("Distribusi Data Sentimen per Tahun")
 
-    # Data manual yang Anda berikan untuk sentimen per tahun
     sentiment_data_per_year = {
         'year': [2023, 2024, 2025],
         'Negatif': [178, 2823, 1550],
@@ -586,23 +534,20 @@ with tab_sentimen_tahun:
     }
     df_sentiment_per_year = pd.DataFrame(sentiment_data_per_year)
 
-    # Pastikan kolom 'year' sebagai string untuk Plotly agar diperlakukan sebagai kategori diskrit
     df_sentiment_per_year['year'] = df_sentiment_per_year['year'].astype(str)
 
     st.subheader("Diagram Batang Sentimen per Tahun")
 
-    # Buat bar chart interaktif dengan Plotly Express (bertumpuk)
     fig_year_sentiment = px.bar(
         df_sentiment_per_year,
         x='year',
-        y=['Negatif', 'Positif'], # Kolom yang akan ditumpuk
+        y=['Negatif', 'Positif'],
         title='Distribusi Data Sentimen per Tahun',
         labels={'value': 'Jumlah Data', 'year': 'Tahun'},
-        color_discrete_map={'Negatif': 'coral', 'Positif': 'skyblue'}, # Sesuaikan warna
+        color_discrete_map={'Negatif': 'coral', 'Positif': 'skyblue'},
         height=500,
-        template="plotly_dark" # Menggunakan tema gelap Plotly
+        template="plotly_dark"
     )
-    # Perbarui layout untuk tampilan yang lebih baik (misalnya, font warna putih)
     fig_year_sentiment.update_layout(
         font_color="white",
         xaxis_title_font_color="white",
@@ -612,14 +557,12 @@ with tab_sentimen_tahun:
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
     )
-    # Perbarui jejak untuk menampilkan teks nilai di atas bar jika diinginkan (opsional)
     fig_year_sentiment.update_traces(texttemplate='%{y}', textposition='outside')
-    fig_year_sentiment.update_yaxes(rangemode="tozero") # Sesuaikan rentang y-axis
+    fig_year_sentiment.update_yaxes(rangemode="tozero")
 
     st.plotly_chart(fig_year_sentiment, use_container_width=True)
 
     st.subheader("Tabel Distribusi Sentimen per Tahun")
-    # Tampilkan tabel data
     df_sentiment_per_year_display = df_sentiment_per_year.set_index('year')
     st.dataframe(df_sentiment_per_year_display, use_container_width=True)
     
@@ -632,13 +575,10 @@ with tab_sentimen_tahun:
 with tab2:
     st.header("Kata Populer & Wordcloud")
 
-    # Pindahkan subheader kata populer ke atas
     st.markdown("<h3 style='text-align: left; color: white;'>Kata-kata Paling Populer</h3>", unsafe_allow_html=True)
     
-    # Inisialisasi stop words Bahasa Indonesia (pastikan ini di sini atau di scope global)
     list_stopwords_indo = set(stopwords.words('indonesian'))
 
-    # Fungsi untuk membersihkan teks dan mendapatkan kata-kata populer
     def get_popular_words(text, stopwords_set, top_n=10):
         if not text:
             return pd.DataFrame(columns=['Kata', 'Jumlah'])
@@ -647,8 +587,6 @@ with tab2:
         word_counts = Counter(filtered_words)
         return pd.DataFrame(word_counts.most_common(top_n), columns=['Kata', 'Jumlah'])
 
-    # Panggil fungsi untuk menghasilkan word clouds dan teks gabungan
-    # Ini harus dipanggil sebelum bar chart karena bar chart butuh positive_texts_combined dll.
     wordclouds_dict, positive_texts_combined, negative_texts_combined = generate_sentiment_wordclouds(
         df_data, text_column='teks', sentiment_column='label'
     )
@@ -725,10 +663,9 @@ with tab2:
         else:
             st.info("Tidak ada kata populer untuk sentimen negatif.")
 
-    st.markdown("---") # Garis pemisah setelah bar chart
-    st.subheader("Word Clouds Berdasarkan Sentimen") # Subheader untuk Word Clouds
+    st.markdown("---")
+    st.subheader("Word Clouds Berdasarkan Sentimen")
 
-    # Word Clouds akan ditampilkan di sini (kode ini tetap seperti sebelumnya)
     col_wc_pos, col_wc_neg = st.columns(2)
 
     with col_wc_pos:
@@ -782,30 +719,26 @@ with tab3:
     st.header("Perbandingan Performa Model pada Data Latih dan Data Uji")
     st.info("Metrik performa dihitung untuk mengevaluasi seberapa baik model belajar (data latih) dan menggeneralisasi (data uji).")
 
-    # Ambil model terbaik dari session state
     best_model_gnb = st.session_state['best_model_gnb']
     best_model_svm = st.session_state['best_model_svm']
 
-    col_gnb_metrics, col_svm_metrics = st.columns(2) # Gunakan 2 kolom untuk metrik model
+    col_gnb_metrics, col_svm_metrics = st.columns(2)
 
     with col_gnb_metrics:
         st.markdown("<h4 style='text-align: left; color: white;'>Naive Bayes Classifier</h4>", unsafe_allow_html=True) 
         
-        # Prediksi untuk data latih GNB (menggunakan data SMOTE)
         y_pred_gnb_train = best_model_gnb.predict(X_train_smote)
         accuracy_gnb_train = accuracy_score(y_train_smote, y_pred_gnb_train)
         precision_gnb_train = precision_score(y_train_smote, y_pred_gnb_train, average='weighted', zero_division=0)
         recall_gnb_train = recall_score(y_train_smote, y_pred_gnb_train, average='weighted', zero_division=0)
         f1_gnb_train = f1_score(y_train_smote, y_pred_gnb_train, average='weighted', zero_division=0)
 
-        # Prediksi untuk data uji GNB (TIDAK MENGGUNAKAN DATA SMOTE)
         y_pred_gnb_test = best_model_gnb.predict(X_test)
         accuracy_gnb_test = accuracy_score(y_test, y_pred_gnb_test)
         precision_gnb_test = precision_score(y_test, y_pred_gnb_test, average='weighted', zero_division=0)
         recall_gnb_test = recall_score(y_test, y_pred_gnb_test, average='weighted', zero_division=0)
         f1_gnb_test = f1_score(y_test, y_pred_gnb_test, average='weighted', zero_division=0)
 
-        # --- Tampilkan Tabel Metrik GNB ---
         st.subheader("Tabel Metrik Naive Bayes Classifier")
         data_gnb_table = {
             'Metrik': ['Akurasi', 'Presisi', 'Recall', 'F1-Score'],
@@ -813,17 +746,13 @@ with tab3:
             'Data Uji (Test)': [accuracy_gnb_test, precision_gnb_test, recall_gnb_test, f1_gnb_test]
         }
         df_gnb_metrics_table = pd.DataFrame(data_gnb_table).set_index('Metrik')
-        # Apply custom styling for background based on colormap (simplified to match dark theme)
         def highlight_vals_gnb_table(s):
-            # Example: Apply a subtle background matching viridis for numbers
             if s.name in ['Data Latih (Train)', 'Data Uji (Test)']:
-                return ['background-color: #0c457d; color: white' for _ in s] # A dark blue to match viridis/dark theme
-            return ['background-color: #1E1E1E; color: white'] # Default background for index column
+                return ['background-color: #0c457d; color: white' for _ in s]
+            return ['background-color: #1E1E1E; color: white']
 
         st.dataframe(df_gnb_metrics_table.style.format("{:.4f}").apply(highlight_vals_gnb_table, axis=0), use_container_width=True)
 
-
-        # --- Tampilkan Diagram Bar GNB ---
         st.subheader("Diagram Performa Naive Bayes Classifier")
         metrics_gnb_for_plot = pd.DataFrame({
             'Metrik': ['Akurasi', 'Presisi', 'Recall', 'F1-Score', 'Akurasi', 'Presisi', 'Recall', 'F1-Score'],
@@ -832,33 +761,30 @@ with tab3:
                      accuracy_gnb_test, precision_gnb_test, recall_gnb_test, f1_gnb_test]
         })
 
-        fig_gnb_metrics, ax_gnb_metrics = plt.subplots(figsize=(6, 4)) # Ukuran lebih kecil untuk berdampingan
-        fig_gnb_metrics.patch.set_facecolor('#1E1E1E') # Latar belakang figure
-        ax_gnb_metrics.set_facecolor('#1E1E1E') # Latar belakang area plot
+        fig_gnb_metrics, ax_gnb_metrics = plt.subplots(figsize=(6, 4))
+        fig_gnb_metrics.patch.set_facecolor('#1E1E1E')
+        ax_gnb_metrics.set_facecolor('#1E1E1E')
 
         sns.barplot(x='Metrik', y='Skor', hue='Tipe Data', data=metrics_gnb_for_plot, ax=ax_gnb_metrics,
-                    palette='viridis') # Menggunakan viridis
+                    palette='viridis')
 
         ax_gnb_metrics.set_title('Performa Naive Bayes Classifier', color='white', fontsize=12)
         ax_gnb_metrics.set_xlabel('')
         ax_gnb_metrics.set_ylabel('Skor', color='white')
         ax_gnb_metrics.tick_params(axis='x', colors='white')
         ax_gnb_metrics.tick_params(axis='y', colors='white')
-        ax_gnb_metrics.set_ylim(0, 1.1) # Batasi Y-axis agar terlihat jelas
+        ax_gnb_metrics.set_ylim(0, 1.1)
 
-        # Menampilkan nilai di atas bar
         for p in ax_gnb_metrics.patches:
             ax_gnb_metrics.annotate(f'{p.get_height():.3f}', 
                                      (p.get_x() + p.get_width() / 2., p.get_height()), 
-                                     ha='center', va='center', xytext=(0, 5), # Sesuaikan xytext
-                                     textcoords='offset points', color='white', fontsize=8) # Ukuran font lebih kecil
+                                     ha='center', va='center', xytext=(0, 5),
+                                     textcoords='offset points', color='white', fontsize=8)
 
-        # Menyesuaikan legenda
         legend = ax_gnb_metrics.legend(title='', loc='upper right', frameon=True, fontsize=8)
-        legend.get_frame().set_facecolor('#1E1E1E') # Latar belakang legenda
-        plt.setp(legend.get_texts(), color='white') # Warna teks legenda
+        legend.get_frame().set_facecolor('#1E1E1E')
+        plt.setp(legend.get_texts(), color='white')
 
-        # Menyesuaikan spines
         ax_gnb_metrics.spines['bottom'].set_color('white')
         ax_gnb_metrics.spines['left'].set_color('white')
         ax_gnb_metrics.spines['top'].set_visible(False)
@@ -868,42 +794,36 @@ with tab3:
         st.pyplot(fig_gnb_metrics)
 
 
-    with col_svm_metrics: # Kolom kedua untuk SVM
+    with col_svm_metrics:
         st.markdown("<h4 style='text-align: left; color: white;'>Support Vector Machine (SVM)</h4>", unsafe_allow_html=True)
 
-        # Prediksi untuk data latih SVM (menggunakan data SMOTE)
         y_pred_svm_train = best_model_svm.predict(X_train_smote)
         accuracy_svm_train = accuracy_score(y_train_smote, y_pred_svm_train)
         precision_svm_train = precision_score(y_train_smote, y_pred_svm_train, average='weighted', zero_division=0)
         recall_svm_train = recall_score(y_train_smote, y_pred_svm_train, average='weighted', zero_division=0)
         f1_svm_train = f1_score(y_train_smote, y_pred_svm_train, average='weighted', zero_division=0)
 
-        # Prediksi untuk data uji SVM (TIDAK MENGGUNAKAN DATA SMOTE)
         y_pred_svm_test = best_model_svm.predict(X_test)
         accuracy_svm_test = accuracy_score(y_test, y_pred_svm_test)
         precision_svm_test = precision_score(y_test, y_pred_svm_test, average='weighted', zero_division=0)
         recall_svm_test = recall_score(y_test, y_pred_svm_test, average='weighted', zero_division=0)
         f1_svm_test = f1_score(y_test, y_pred_svm_test, average='weighted', zero_division=0)
 
-        # --- Tampilkan Tabel SVM ---
-        st.subheader("Tabel Metrik SVM") # Subheader untuk tabel
+        st.subheader("Tabel Metrik SVM")
         data_svm_table = {
             'Metrik': ['Akurasi', 'Presisi', 'Recall', 'F1-Score'],
             'Data Latih (Train)': [accuracy_svm_train, precision_svm_train, recall_svm_train, f1_svm_train],
             'Data Uji (Test)': [accuracy_svm_test, precision_svm_test, recall_svm_test, f1_svm_test]
         }
         df_svm_metrics_table = pd.DataFrame(data_svm_table).set_index('Metrik')
-        # Apply custom styling for background based on colormap (simplified to match dark theme)
         def highlight_vals_svm_table(s):
-            # Example: Apply a subtle background matching viridis for numbers
             if s.name in ['Data Latih (Train)', 'Data Uji (Test)']:
-                return ['background-color: #0c457d; color: white' for _ in s] # A dark blue to match viridis/dark theme
-            return ['background-color: #1E1E1E; color: white'] # Default background for index column
+                return ['background-color: #0c457d; color: white' for _ in s]
+            return ['background-color: #1E1E1E; color: white']
 
         st.dataframe(df_svm_metrics_table.style.format("{:.4f}").apply(highlight_vals_svm_table, axis=0), use_container_width=True)
 
-        # --- Tampilkan Diagram Bar SVM ---
-        st.subheader("Diagram Performa SVM") # Subheader untuk diagram
+        st.subheader("Diagram Performa SVM")
         metrics_svm_for_plot = pd.DataFrame({
             'Metrik': ['Akurasi', 'Presisi', 'Recall', 'F1-Score', 'Akurasi', 'Presisi', 'Recall', 'F1-Score'],
             'Tipe Data': ['Data Latih (Train)'] * 4 + ['Data Uji (Test)'] * 4,
@@ -911,33 +831,30 @@ with tab3:
                      accuracy_svm_test, precision_svm_test, recall_svm_test, f1_svm_test]
         })
 
-        fig_svm_metrics, ax_svm_metrics = plt.subplots(figsize=(6, 4)) # Ukuran lebih kecil
-        fig_svm_metrics.patch.set_facecolor('#1E1E1E') # Latar belakang figure
-        ax_svm_metrics.set_facecolor('#1E1E1E') # Latar belakang area plot
+        fig_svm_metrics, ax_svm_metrics = plt.subplots(figsize=(6, 4))
+        fig_svm_metrics.patch.set_facecolor('#1E1E1E')
+        ax_svm_metrics.set_facecolor('#1E1E1E')
 
         sns.barplot(x='Metrik', y='Skor', hue='Tipe Data', data=metrics_svm_for_plot, ax=ax_svm_metrics,
-                    palette='viridis') # Menggunakan viridis
+                    palette='viridis')
 
-        ax_svm_metrics.set_title('Performa SVM', color='white', fontsize=12) # Judul lebih pendek
+        ax_svm_metrics.set_title('Performa SVM', color='white', fontsize=12)
         ax_svm_metrics.set_xlabel('')
         ax_svm_metrics.set_ylabel('Skor', color='white')
         ax_svm_metrics.tick_params(axis='x', colors='white')
         ax_svm_metrics.tick_params(axis='y', colors='white')
-        ax_svm_metrics.set_ylim(0, 1.1) # Batasi Y-axis
+        ax_svm_metrics.set_ylim(0, 1.1)
 
-        # Menampilkan nilai di atas bar
         for p in ax_svm_metrics.patches:
             ax_svm_metrics.annotate(f'{p.get_height():.3f}', 
                                      (p.get_x() + p.get_width() / 2., p.get_height()), 
                                      ha='center', va='center', xytext=(0, 5), 
                                      textcoords='offset points', color='white', fontsize=8)
 
-        # Menyesuaikan legenda
         legend = ax_svm_metrics.legend(title='', loc='upper right', frameon=True, fontsize=8)
-        legend.get_frame().set_facecolor('#1E1E1E') # Latar belakang legenda
-        plt.setp(legend.get_texts(), color='white') # Warna teks legenda
+        legend.get_frame().set_facecolor('#1E1E1E')
+        plt.setp(legend.get_texts(), color='white')
 
-        # Menyesuaikan spines
         ax_svm_metrics.spines['bottom'].set_color('white')
         ax_svm_metrics.spines['left'].set_color('white')
         ax_svm_metrics.spines['top'].set_visible(False)
@@ -948,29 +865,26 @@ with tab3:
 
     st.success("Perbandingan performa model pada data latih dan data uji telah ditampilkan.")
 
-    st.markdown("---") # Garis pemisah sebelum kesimpulan
+    st.markdown("---")
 
     st.subheader("Kesimpulan Performa Model Keseluruhan")
     st.info("Berikut adalah ringkasan performa model Naive Bayes Classifier dan Support Vector Machine pada data uji.") 
 
-    # Membuat DataFrame untuk tabel kesimpulan
     summary_data = {
         'Model': ['Naive Bayes Classifier', 'Support Vector Machine'], 
         'F1-Score CV (Train)': [st.session_state['best_score_gnb'], st.session_state['best_score_svm']],
-        'Akurasi (Test)': [accuracy_gnb_test, accuracy_svm_test], # Gunakan accuracy_gnb_test dan accuracy_svm_test yang sudah dihitung
+        'Akurasi (Test)': [accuracy_gnb_test, accuracy_svm_test],
         'F1-Score (Test)': [f1_gnb_test, f1_svm_test],
         'Overfitting Indikator': [f"{abs(accuracy_gnb_train - accuracy_gnb_test):.3f}", f"{abs(accuracy_svm_train - accuracy_svm_test):.3f}"]
     }
     df_summary = pd.DataFrame(summary_data)
 
-    # Menentukan model terbaik berdasarkan F1-Score pada data uji
     best_model_name = df_summary.loc[df_summary['F1-Score (Test)'].idxmax()]['Model']
 
-    # Custom styling untuk tabel kesimpulan
     def highlight_best_model(row):
         style = [''] * len(row)
         if row['Model'] == best_model_name:
-            style = ['background-color: #1560BD; color: white'] * len(row) # Warna biru untuk model terbaik
+            style = ['background-color: #1560BD; color: white'] * len(row)
         return style
 
     st.dataframe(df_summary.style.format({
@@ -980,111 +894,94 @@ with tab3:
     }).apply(highlight_best_model, axis=1), use_container_width=True)
 
     st.markdown(f"**Kesimpulan:** Berdasarkan F1-Score pada data uji, model **{best_model_name}** memiliki performa terbaik.")
-    st.markdown("<p style='font-size: 0.8em; color: gray;'>*'Overfitting Indikator' menunjukkan selisih antara akurasi pada data latih dan data uji. Nilai yang lebih kecil menunjukkan generalisasi yang lebih baik.</p>", unsafe_allow_html=True)
-
+    # st.markdown("<p style='font-size: 0.8em; color: gray;'>*'Overfitting Indikator' menunjukkan selisih antara akurasi pada data latih dan data uji. Nilai yang lebih kecil menunjukkan generalisasi yang lebih baik.</p>", unsafe_allow_html=True) # Dihapus
 
 # --- Tab 4: Evaluasi Uji Rinci ---
 with tab4:
-    st.header("Evaluasi Model pada Data Uji (Test)") # Header utama baru
-    st.markdown("Menampilkan konfigurasi model, laporan klasifikasi, matriks konfusi, dan hasil prediksi rinci.") # Deskripsi
+    st.header("Evaluasi Model pada Data Uji (Test)")
+    st.markdown("Menampilkan konfigurasi model, laporan klasifikasi, matriks konfusi, dan hasil prediksi rinci.")
 
-    col_gnb_eval, col_svm_eval = st.columns(2) # Dua kolom untuk GNB dan SVM
+    col_gnb_eval, col_svm_eval = st.columns(2)
 
-    # Ambil model terbaik dari session state
     best_model_gnb = st.session_state['best_model_gnb']
     best_model_svm = st.session_state['best_model_svm']
 
-    # --- Hitung prediksi dan metrik di awal tab4 agar konsisten ---
-    # GNB
     y_pred_nb = best_model_gnb.predict(X_test)
     accuracy_gnb_test_tab4 = accuracy_score(y_test, y_pred_nb)
     
-    # SVM
     y_pred_svm = best_model_svm.predict(X_test)
     accuracy_svm_test_tab4 = accuracy_score(y_test, y_pred_svm)
-    # --- Akhir perhitungan awal metrik ---
 
-    # --- Kolom Kiri: Evaluasi Naive Bayes Classifier ---
     with col_gnb_eval:
         st.markdown(f"<h4 style='text-align: left; color: white;'>Naive Bayes Classifier</h4>", unsafe_allow_html=True)
-        st.markdown(f"<span style='font-size: 0.9em; color: limegreen;'>Akurasi: `{accuracy_gnb_test_tab4:.4f}`</span>", unsafe_allow_html=True) # Perbaikan di sini
-        st.markdown(f"Konfigurasi: `{st.session_state['best_params_gnb']}`") # Tampilkan parameter terbaik
+        st.markdown(f"<span style='font-size: 0.9em; color: limegreen;'>Akurasi: `{accuracy_gnb_test_tab4:.4f}`</span>", unsafe_allow_html=True)
+        st.markdown(f"Konfigurasi: `{st.session_state['best_params_gnb']}`")
 
-        st.write("##### Laporan Klasifikasi") # Subheader lebih kecil
-        # Mengubah classification report menjadi DataFrame untuk tampilan tabel
+        st.write("##### Laporan Klasifikasi")
         report_dict_nb = classification_report(y_test, y_pred_nb, output_dict=True, zero_division=0)
         df_report_nb = pd.DataFrame(report_dict_nb).transpose()
         df_report_nb.index.name = 'Class/Metric'
         df_report_nb = df_report_nb.reset_index()
-        # Opsional: Ganti label 0 dan 1 dengan 'Negatif' dan 'Positif'
         df_report_nb['Class/Metric'] = df_report_nb['Class/Metric'].replace({'0': 'Negatif', '1': 'Positif'})
-        # Hapus baris 'accuracy' dari tabel karena akan ditampilkan terpisah
         df_report_nb_display = df_report_nb[~df_report_nb['Class/Metric'].isin(['accuracy', 'macro avg', 'weighted avg'])]
         st.dataframe(df_report_nb_display.style.format("{:.2f}", subset=['precision', 'recall', 'f1-score', 'support']), use_container_width=True)
         
-        st.write("##### Matriks Konfusi") # Subheader lebih kecil
+        st.write("##### Matriks Konfusi")
         cm_nb = confusion_matrix(y_test, y_pred_nb)
         fig_nb, ax_nb = plt.subplots(figsize=(7, 5))
-        fig_nb.patch.set_facecolor('#1E1E1E') # Latar belakang figure
-        ax_nb.set_facecolor('#1E1E1E') # Latar belakang area plot
-        sns.heatmap(cm_nb, annot=True, fmt='d', cmap='viridis', cbar=False, # Menggunakan viridis untuk kontras
+        fig_nb.patch.set_facecolor('#1E1E1E')
+        ax_nb.set_facecolor('#1E1E1E')
+        sns.heatmap(cm_nb, annot=True, fmt='d', cmap='viridis', cbar=False,
                     xticklabels=['Negatif', 'Positif'], yticklabels=['Negatif', 'Positif'], ax=ax_nb)
         ax_nb.set_xlabel('Prediksi', color='white')
         ax_nb.set_ylabel('Aktual', color='white')
         ax_nb.tick_params(axis='x', colors='white')
         ax_nb.tick_params(axis='y', colors='white')
-        ax_nb.set_title('Matriks Konfusi', color='white') # Judul lebih singkat
+        ax_nb.set_title('Matriks Konfusi', color='white')
         plt.tight_layout()
         st.pyplot(fig_nb)
 
-    # --- Kolom Kanan: Evaluasi Support Vector Machine (SVM) ---
     with col_svm_eval:
         st.markdown(f"<h4 style='text-align: left; color: white;'>Support Vector Machine (SVM)</h4>", unsafe_allow_html=True)
-        st.markdown(f"<span style='font-size: 0.9em; color: limegreen;'>Akurasi: `{accuracy_svm_test_tab4:.4f}`</span>", unsafe_allow_html=True) # Perbaikan di sini
-        st.markdown(f"Konfigurasi: `{st.session_state['best_params_svm']}`") # Tampilkan parameter terbaik
+        st.markdown(f"<span style='font-size: 0.9em; color: limegreen;'>Akurasi: `{accuracy_svm_test_tab4:.4f}`</span>", unsafe_allow_html=True)
+        st.markdown(f"Konfigurasi: `{st.session_state['best_params_svm']}`")
 
-        st.write("##### Laporan Klasifikasi") # Subheader lebih kecil
-        # Mengubah classification report menjadi DataFrame untuk tampilan tabel
+        st.write("##### Laporan Klasifikasi")
         report_dict_svm = classification_report(y_test, y_pred_svm, output_dict=True, zero_division=0)
         df_report_svm = pd.DataFrame(report_dict_svm).transpose()
         df_report_svm.index.name = 'Class/Metric'
         df_report_svm = df_report_svm.reset_index()
-        # Opsional: Ganti label 0 dan 1 dengan 'Negatif' dan 'Positif'
         df_report_svm['Class/Metric'] = df_report_svm['Class/Metric'].replace({'0': 'Negatif', '1': 'Positif'})
-        # Hapus baris 'accuracy' dari tabel karena akan ditampilkan terpisah
         df_report_svm_display = df_report_svm[~df_report_svm['Class/Metric'].isin(['accuracy', 'macro avg', 'weighted avg'])]
         st.dataframe(df_report_svm_display.style.format("{:.2f}", subset=['precision', 'recall', 'f1-score', 'support']), use_container_width=True)
         
-        st.write("##### Matriks Konfusi") # Subheader lebih kecil
+        st.write("##### Matriks Konfusi")
         cm_svm = confusion_matrix(y_test, y_pred_svm)
         fig_svm, ax_svm = plt.subplots(figsize=(7, 5))
-        fig_svm.patch.set_facecolor('#1E1E1E') # Latar belakang figure
-        ax_svm.set_facecolor('#1E1E1E') # Latar belakang area plot
-        sns.heatmap(cm_svm, annot=True, fmt='d', cmap='viridis', cbar=False, # Menggunakan viridis
+        fig_svm.patch.set_facecolor('#1E1E1E')
+        ax_svm.set_facecolor('#1E1E1E')
+        sns.heatmap(cm_svm, annot=True, fmt='d', cmap='viridis', cbar=False,
                     xticklabels=['Negatif', 'Positif'], yticklabels=['Negatif', 'Positif'], ax=ax_svm)
         ax_svm.set_xlabel('Prediksi', color='white')
         ax_svm.set_ylabel('Aktual', color='white')
         ax_svm.tick_params(axis='x', colors='white')
         ax_svm.tick_params(axis='y', colors='white')
-        ax_svm.set_title('Matriks Konfusi', color='white') # Judul lebih singkat
+        ax_svm.set_title('Matriks Konfusi', color='white')
         plt.tight_layout()
         st.pyplot(fig_svm)
 
-    st.markdown("---") # Garis pemisah setelah kedua kolom
+    st.markdown("---")
 
     st.subheader("Tabel Hasil Prediksi Data Uji")
     st.info("Berikut adalah sampel data uji beserta label aktual dan prediksi dari kedua model.")
 
-    # Gabungkan df_test_display dengan prediksi dari kedua model
     df_results = df_test_display.copy()
     df_results['True Label'] = df_results['label'].map({0: 'Negatif', 1: 'Positif'})
     df_results['Predicted Label (Naive Bayes Classifier)'] = pd.Series(y_pred_nb).map({0: 'Negatif', 1: 'Positif'})
     df_results['Predicted Label (SVM)'] = pd.Series(y_pred_svm).map({0: 'Negatif', 1: 'Positif'})
 
-    # Ambil kolom yang relevan untuk ditampilkan
     display_cols = ['teks', 'True Label', 'Predicted Label (Naive Bayes Classifier)', 'Predicted Label (SVM)'] 
     
-    # Konversi kolom 'teks' dari list menjadi string untuk tampilan
     df_results_display = df_results[display_cols].copy()
     if 'teks' in df_results_display.columns:
         df_results_display['teks'] = df_results_display['teks'].apply(
@@ -1093,25 +990,21 @@ with tab4:
 
     st.dataframe(df_results_display, use_container_width=True)
 
-    st.markdown("---") # Garis pemisah sebelum kesimpulan baru
+    st.markdown("---")
 
     st.subheader("Kesimpulan Performa Model Keseluruhan pada Data Uji")
     st.info("Ringkasan metrik performa utama untuk setiap model pada data uji.")
 
-    # Hitung ulang metrik untuk kesimpulan agar konsisten dengan yang ditampilkan di atas
-    # Naive Bayes Classifier
     accuracy_gnb_test_final = accuracy_score(y_test, y_pred_nb)
     precision_gnb_test_final = precision_score(y_test, y_pred_nb, average='weighted', zero_division=0)
     recall_gnb_test_final = recall_score(y_test, y_pred_nb, average='weighted', zero_division=0)
     f1_gnb_test_final = f1_score(y_test, y_pred_nb, average='weighted', zero_division=0)
 
-    # SVM
     accuracy_svm_test_final = accuracy_score(y_test, y_pred_svm)
     precision_svm_test_final = precision_score(y_test, y_pred_svm, average='weighted', zero_division=0)
     recall_svm_test_final = recall_score(y_test, y_pred_svm, average='weighted', zero_division=0)
     f1_svm_test_final = f1_score(y_test, y_pred_svm, average='weighted', zero_division=0)
 
-    # Membuat DataFrame untuk tabel kesimpulan
     summary_data_final = {
         'Model': ['Naive Bayes Classifier', 'Support Vector Machine'], 
         'Akurasi (Test)': [accuracy_gnb_test_final, accuracy_svm_test_final],
@@ -1121,14 +1014,12 @@ with tab4:
     }
     df_summary_final = pd.DataFrame(summary_data_final)
 
-    # Menentukan model terbaik berdasarkan F1-Score pada data uji
     best_model_name_final = df_summary_final.loc[df_summary_final['F1-Score (Test)'].idxmax()]['Model']
 
-    # Custom styling untuk tabel kesimpulan
     def highlight_best_model_final(row):
         style = [''] * len(row)
         if row['Model'] == best_model_name_final:
-            style = ['background-color: #1560BD; color: white'] * len(row) # Warna biru untuk model terbaik
+            style = ['background-color: #1560BD; color: white'] * len(row)
         return style
 
     st.dataframe(df_summary_final.style.format({
